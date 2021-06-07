@@ -1,0 +1,158 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: apiteacher
+  namespace: stage
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    run: apiteacher
+  type: NodePort
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: apiteacher
+  namespace: stage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: apiteacher
+  template:
+    metadata:
+      labels:
+        run: apiteacher
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.16
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        volumeMounts:
+        - name: codebase
+          mountPath: /usr/share/nginx
+        - name: nginxapi-config
+          mountPath: /etc/nginx/conf.d
+        livenessProbe:
+          httpGet:
+            path: /healthcheck.html
+            port: 80
+        readinessProbe:
+          httpGet:
+            path: /healthcheck.html
+            port: 80
+      - name: phpfpm
+        image: tbng84/aischool:phpfpm-7.3-utils
+        imagePullPolicy: Always
+        workingDir: /usr/share/nginx/html
+        ports:
+        - containerPort: 9000
+          protocol: TCP
+        env:
+            - name: APP_ENV
+              value: 'prod'
+            - name: POSTGRES_DB_HOST
+              value: '127.0.0.1'
+            - name: POSTGRES_DB_APP
+              value: stage_app
+            - name: POSTGRES_DB_AUTH
+              value: stage_auth
+            - name: POSTGRES_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: cloudsql-db-credentials
+                  key: username
+            - name: POSTGRES_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cloudsql-db-credentials
+                  key: password
+            - name: REDIS_HOST
+              value: '10.0.16.4'
+            - name: REDIS_PORT
+              value: '6379'
+            - name: GCP_PROJECT_ID
+              value: 'aischool-prod'
+            - name: GCP_SERVICE_ACCOUNT_KEY
+              value: /var/secrets/google/aischool-gcs.json
+            - name: GCP_BUCKET_PUBLIC
+              value: 'aischool_public'
+            - name: GCP_BUCKET_PRIVATE
+              value: 'aischool_private_stage'
+            - name: ONESIGNAL_APP_ID_TEACHER
+              value: '414fce41-2cc8-4637-9672-bbae27ca95da'
+            - name: ONESIGNAL_API_KEY_TEACHER
+              value: 'MTczYzdjNmUtZDZlOS00OGNmLTgxMGUtNmY0MjE2ODI5YmUx'
+            - name: ONESIGNAL_APP_ID_PARENT
+              value: 'ba7d5322-7746-48d6-9cb9-b4678bf3f3ff'
+            - name: ONESIGNAL_API_KEY_PARENT
+              value: 'NTRlNTQ5MTUtNzJiYi00OTA4LTkzY2ItY2JiMWJkOTk1NjVh'
+            - name: ONESIGNAL_APP_ID_PRINCIPAL
+              value: '76c3d82a-90b0-444d-b6e4-ede2c809a8b3'
+            - name: ONESIGNAL_API_KEY_PRINCIPAL
+              value: 'ZGNiOTBjYjYtYzEyZS00N2U5LWE5ZDctMjA4MjIwYjhkZDA1'
+            - name: REDIS_LIST_TEACHER
+              value: 'LIST_TEACHER_STAGE'
+            - name: REDIS_LIST_PRINCIPAL
+              value: 'LIST_PRINCIPAL_STAGE'
+            - name: REDIS_LIST_PARENT
+              value: 'LIST_PARENT_STAGE'
+        livenessProbe:
+          tcpSocket:
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 2
+        volumeMounts:
+        - name: codebase
+          mountPath: /usr/share/nginx
+        - name: php-config
+          mountPath: /usr/local/etc/php/php.ini
+          subPath: php.ini
+        - name: cloudstorage-key
+          mountPath: /var/secrets/google
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "./initCache"]
+      - name: cloudsql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.14
+        command: ["/cloud_sql_proxy",
+            "-instances=aischool-prod:asia-southeast1:aischool-db=tcp:5432",
+            "-credential_file=/secrets/cloudsql/aischool-prod-75ce73706207.json"]
+        securityContext:
+          runAsUser: 2  # non-root user
+          allowPrivilegeEscalation: false
+        volumeMounts:
+        - name: cloudsql-instance-credentials
+          mountPath: /secrets/cloudsql
+          readOnly: true
+      initContainers:
+      - name: init-code
+        image: gcr.io/aischool-prod/stage:init-apiteacher-v2020032602
+        imagePullPolicy: Always
+        command: ["cp", "-r", "/html", "/usr/share/nginx"]
+        volumeMounts:
+        - name: codebase
+          mountPath: "/usr/share/nginx"
+      volumes:
+      - name: codebase
+        emptyDir: {}
+      - name: nginxapi-config
+        configMap:
+          name: nginxapi-config
+      - name: php-config
+        configMap:
+          name: php-config
+      - name: cloudsql-instance-credentials
+        secret:
+          secretName: cloudsql-instance-credentials
+      - name: cloudstorage-key
+        secret:
+          secretName: cloudstorage-key

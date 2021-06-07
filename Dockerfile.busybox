@@ -1,0 +1,9 @@
+#start with our base image (the foundation) - version glibc
+FROM busybox:glibc
+
+#set our application folder as an environment variable
+WORKDIR /html
+
+#copy source code to image
+COPY . /html
+

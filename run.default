@@ -1,0 +1,304 @@
+#!/bin/bash
+
+SERVICE=default
+DOMAIN="api-teacher.aischool.loc"
+REGEX_DOMAIN="/.*api-teacher\.aischool\.loc/d"
+COMPOSE_FILE="./docker-compose.yml"
+VHOST_CONF="docker/nginx/aischool.conf"
+DEST_CONF="/etc/nginx/conf.d/aischool.conf"
+IMAGE_NAME="aischool_api_teacher_phpfpm"
+
+setupMachine () {
+
+    if [ "$(which docker-machine)" == "" ]; then
+        echo "please install docker-machine from https://www.docker.com/toolbox";
+        exit
+    elif [ "$(docker-machine ls | grep $SERVICE)" == "" ]; then
+        echo "creating docker-machine $SERVICE...";
+        #docker-machine create -d virtualbox --virtualbox-cpu-count "2" --virtualbox-memory "3072" --virtualbox-disk-size "20000" $SERVICE
+        docker-machine create -d virtualbox $SERVICE
+        sleep 10;
+    fi;
+}
+
+destroyMachine () {
+    echo "destroying machine $SERVICE..."
+    eval "$(docker-machine env $SERVICE)"
+    docker-machine rm $SERVICE
+}
+
+init () {
+    if [ "$(which docker-machine)" != "" ]; then
+        setupMachine;
+    fi;
+
+    eval "$(docker-machine env $SERVICE)"
+    # echo docker running on $(docker-machine ip $SERVICE)
+}
+
+setupDNS () {
+    if [ "$(which docker-machine)" == "" ]; then
+        ip="127.0.0.1";
+    else
+        if [ $1 == 'mac' ]; then
+            ip=$(docker-machine ip $SERVICE);
+        else
+            ip="127.0.0.1";
+        fi;
+    fi;
+
+    echo "$ip $DOMAIN" | sudo tee -a /etc/hosts > /dev/null;
+}
+
+removeDNS () {
+    echo "removing DNS from host file...";
+    sudo sed -i.bak "${REGEX_DOMAIN}" /etc/hosts
+}
+
+compose () {
+    if [ "$(which docker-compose)" == "" ]; then
+        echo "please install docker-compose from https://www.docker.com/toolbox";
+        exit
+    fi;
+
+    echo "composing...";
+    #docker-compose -f $COMPOSE_FILE build
+    #docker-compose -f $COMPOSE_FILE up -d
+    #docker-compose -f $COMPOSE_FILE ps
+    #docker-compose -f $COMPOSE_FILE rm -f
+    docker-compose up -d
+}
+
+decompose () {
+    echo "decomposing...";
+    docker-compose -f $COMPOSE_FILE down
+    docker-compose -f $COMPOSE_FILE rm -f
+}
+
+open () {
+    if [ "$1" == "api" ]; then
+        /usr/bin/open -a "/Applications/Google Chrome.app" "https://$DNS3:1443/"
+    elif [ "$1" == "setup" ]; then
+        /usr/bin/open -a "/Applications/Google Chrome.app" "http://$DNS1:2000/"
+    else
+        /usr/bin/open -a "/Applications/Google Chrome.app" "https://$DNS3:1443/"
+        /usr/bin/open -a "/Applications/Google Chrome.app" "http://$DNS1:2000/"
+    fi
+}
+
+debug () {
+    if [ "$2" == "" ]; then
+        ip=$(docker-machine ip $SERVICE);
+        if [ "$1" == "api" ]; then
+            port=4001;
+        else
+            port=4001;
+        fi
+    elif [ "$2" == "dev" ]; then
+        ip="10.0.0.115"
+        if [ "$1" == "api" ]; then
+            port=46478;
+        else
+            port=46478;
+        fi
+    elif [ "$2" == "test" ]; then
+        ip="10.0.0.115"
+        if [ "$1" == "api" ]; then
+            port=5930;
+        else
+            port=5930;
+        fi
+    elif [ "$2" == "stg" ]; then
+        ip="10.0.2.68"
+        if [ "$1" == "api" ]; then
+            port=4001;
+        else
+            port=4001;
+        fi
+    elif [ "$2" == "prod" ]; then
+        ip="10.0.4.201"
+        if [ "$1" == "api" ]; then
+            port=4001;
+        else
+            port=4001;
+        fi
+    fi
+
+    json=$(curl -s http://$ip:$port/json)
+    url=$(echo $json | sed 's/.*devtoolsFrontendUrl": "//')
+    url=$(echo $url | sed 's/".*//')
+    url=$(echo $url | sed "s,localhost,$ip,")
+    url=$(echo $url | sed "s,127.0.0.1,$ip,")
+    # url=$(echo $url | sed "s,https://chrome-devtools-frontend.appspot.com,chrome-devtools://devtools/remote,")
+
+    # if [ "$(uname)" == "Linux" ]; then
+    #     google-chrome $url;
+    # else
+    #     /usr/bin/open -a "/Applications/Google Chrome.app" $url;
+    # fi
+}
+
+container_name () {
+    docker ps -f "name=${IMAGE_NAME}*" --format "{{.Names}}"
+}
+
+cmd () {
+    #init;
+    #docker exec -it $(docker-compose -f $COMPOSE_FILE ps -q $1) bash -c "$2"
+    #CONTAINER_ID=$(docker ps --format "{{.Names}}" -f "ancestor=$IMAGE_NAME")
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker exec -it $CONTAINER_NAME $1
+}
+
+start () {
+    if [ -z "$1" ]; then
+        docker-compose up
+    else
+        eval $(docker-machine env $1)
+        docker-compose up
+    fi
+}
+
+config_apache2 () {
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker cp $VHOST_CONF "$CONTAINER_NAME:$DEST_CONF"
+    docker exec -it $CONTAINER_NAME /etc/init.d/apache2 reload
+}
+
+composer () {
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker exec -it $CONTAINER_NAME composer install
+    docker exec -it $CONTAINER_NAME composer update
+}
+
+yiiInit () {
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker exec -it $CONTAINER_NAME php init
+}
+
+config_nginx () {
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker cp $VHOST_CONF "$CONTAINER_NAME:$DEST_CONF"
+    docker exec -it $CONTAINER_NAME service nginx reload
+}
+
+migrate () {
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker exec -it $CONTAINER_NAME ./yii bootstrap/clean-db
+    docker exec -it $CONTAINER_NAME ./yii migrate --interactive=0
+}
+
+fixture () {
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker exec -it $CONTAINER_NAME ./yii fixture "Users" --interactive=0
+
+    docker exec -it $CONTAINER_NAME ./yii fixture "Packages,PackageRoles" --interactive=0
+    docker exec -it $CONTAINER_NAME ./yii fixture "AdminSchoolModules,AdminSchoolModuleRoutes,PackageRoleAdminSchoolModules" --interactive=0
+    docker exec -it $CONTAINER_NAME ./yii fixture "ApiTeacherModules,ApiTeacherModuleRoutes,PackageRoleApiTeacherModules" --interactive=0
+    docker exec -it $CONTAINER_NAME ./yii fixture "ApiParentModules,ApiParentModuleRoutes,PackageRoleApiParentModules" --interactive=0
+    docker exec -it $CONTAINER_NAME ./yii fixture "ApiPrincipalModules,ApiPrincipalModuleRoutes,PackageRoleApiPrincipalModules" --interactive=0
+
+    docker exec -it $CONTAINER_NAME ./yii fixture/load "Schools,SchoolPackages" --interactive=0
+    docker exec -it $CONTAINER_NAME ./yii fixture/load "Principals,PrincipalSchools,PrincipalPackageRoles" --interactive=0
+    docker exec -it $CONTAINER_NAME ./yii fixture/load "Teachers,SchoolTeachers,TeacherPackageRoles" --interactive=0
+    docker exec -it $CONTAINER_NAME ./yii fixture/load "Parents,Kids,SchoolKids,ParentPackageRoles" --interactive=0
+}
+
+bootstrap () {
+    CONTAINER_NAME=$(container_name)
+    echo "container name ${CONTAINER_NAME}"
+    docker exec -it $CONTAINER_NAME ./yii bootstrap/auth-rbac
+}
+
+if [ "$1" == "init" ]; then
+    init;
+elif [ "$1" == "open" ]; then
+    open $2
+elif [ "$1" == "debug" ]; then
+    debug $2 $3;
+elif [ "$1" == "setup-linux" ]; then
+    removeDNS;
+    #setupMachine;
+    setupDNS "linux";
+    composer;
+    yiiInit;
+    migrate;
+    fixture;
+    bootstrap;
+    echo "setup complete!"
+elif [ "$1" == "setup-mac" ]; then
+    removeDNS;
+    #setupMachine;
+    setupDNS "mac";
+    #init;
+    #compose;
+    composer;
+    yiiInit;
+    migrate;
+    fixture;
+    bootstrap;
+    echo "setup complete!"
+elif [ "$1" == "config-linux" ]; then
+    removeDNS;
+    setupDNS "linux";
+    #config_nginx;
+    echo "setup complete!"
+elif [ "$1" == "config-mac" ]; then
+    removeDNS;
+    setupDNS "mac";
+    #config_nginx;
+    echo "setup complete!"
+elif [ "$1" == "destroy" ]; then
+    removeDNS;
+    init;
+    decompose;
+    echo "destroy complete!"
+elif [ "$1" == "ip" ]; then
+    ip=$(docker-machine ip $SERVICE);
+    echo $ip;
+elif [ "$1" == "update" ]; then
+    cmd "mobile" "cd /srv/mobile;ansible-playbook -vvvv ops/playbooks/main/local/update.yml -i ops/playbooks/inventories/local;forever restartall;"
+elif [ "$1" == "kill" ]; then
+    removeDNS;
+    init;
+    destroyMachine;
+elif [ "$1" == "logs" ]; then
+    cmd "mobile" "find /logs/mobile -not -type d -not -name 'web.log' -name '*.log' | xargs tail -n0 -f;"
+elif [ "$1" == "errors" ]; then
+    cmd "mobile" "find /logs/mobile -not -type d -name 'err.log' | xargs tail -n0 -f;"
+elif [ "$1" == "shell" ]; then
+    cmd "mobile" "cd /srv/mobile;/bin/bash"
+elif [ "$1" == "psql" ] || [ "$1" == "sql" ]; then
+    cmd "dbserver" "PGPASSWORD=dbuser;psql -h localhost -U dbuser -d mobile"
+elif [ "$1" == "resetdb" ]; then
+    cmd "mobile" "cd /srv/mobile;node db/delete.js delete;node db/migrate.js current;node db/migrate.js seed local.sql;"
+elif [ "$1" == "lint" ]; then
+    cmd "mobile" "cd /srv/mobile;gulp lint;"
+elif [ "$1" == "unit" ]; then
+    cmd "mobile" "cd /srv/mobile;gulp unit;"
+elif [ "$1" == "integration" ]; then
+    cmd "mobile" "cd /srv/mobile;gulp integration;"
+elif [ "$1" == "functional" ]; then
+    cmd "mobile" "cd /srv/mobile;gulp functional;"
+elif [ "$1" == "load" ]; then
+    cmd "mobile" "cd /srv/mobile;gulp load;"
+elif [ "$1" == "security" ]; then
+    cmd "mobile" "cd /srv/mobile;gulp security;"
+elif [ "$1" == "test" ]; then
+    cmd "mobile" "cd /srv/mobile;gulp test;"
+elif [ "$1" == "start" ]; then
+    start $2
+elif [ "$1" == "migrate" ]; then
+    cmd "./yii migrate"
+elif [ "$1" == "cmd" ]; then
+    cmd $2
+else
+    echo "invalid run command"
+fi

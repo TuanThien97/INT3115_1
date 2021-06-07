@@ -1,0 +1,7 @@
+#!/bin/bash
+[ -d ./api/runtime ] || mkdir ./api/runtime
+chmod 0777 ./api/runtime
+[ -d ./console/runtime ] || mkdir ./console/runtime
+chmod 0777 ./console/runtime
+[ -d ./api/web/assets ] || mkdir ./api/web/assets
+chmod 0777 ./api/web/assets

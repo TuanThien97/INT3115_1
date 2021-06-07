@@ -1,0 +1,53 @@
+# AISchool virtual host
+server {
+    charset utf-8;
+    client_max_body_size 128M;
+    server_tokens off;
+
+    listen 80; ## listen for ipv4
+    listen 443 ssl; ## SSL configuration
+    # self signing cert, for LOCAL only
+    #ssl_certificate /etc/nginx/conf.d/cert.pem;
+    #ssl_certificate_key /etc/nginx/conf.d/key.pem;
+
+    # DEV env: using letsencrypt cert
+    ssl_certificate /etc/nginx/conf.d/fullchain_dev.pem;
+    ssl_certificate_key /etc/nginx/conf.d/privkey_dev.pem;
+
+    #server_name api-teacher.aischool.loc;
+    server_name api-teacher.dev1.megasoftware.vn;
+    root   /usr/share/nginx/html/api/web;
+    index  index.php;
+
+    access_log /var/log/nginx/aischool.access.log;
+    error_log  /var/log/nginx/aischool.error.log;
+
+    location / {
+        # Redirect everything that isn't a real file to index.php
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    # uncomment to avoid processing of calls to non-existing static files by Yii
+    #location ~ \.(js|css|png|jpg|gif|swf|ico|pdf|mov|fla|zip|rar)$ {
+    #    try_files $uri =404;
+    #}
+    #error_page 404 /404.html;
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        if (!-f $document_root$fastcgi_script_name) {
+                return 404;
+        }
+
+        fastcgi_pass phpfpmapiteacher:9000;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_NAME $fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_read_timeout 600s;
+    }
+
+    location ~ /\.(git) {
+        deny all;
+    }
+}

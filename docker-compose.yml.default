@@ -1,0 +1,75 @@
+version: '3.1'
+# define all services
+services:
+  nginx:
+    # we want to use the image which is build from our Dockerfile
+    image: nginx:1.16
+    # apache is running on port 80 but we want to expose this to port 4000 on our local machine
+    ports:
+      - "8881:80"
+      - "3881:443"
+    # we depending on the mysql backend
+    depends_on:
+      - phpfpmapiteacher
+    # we mount the working dir into the container, handy for development 
+    volumes:
+      - .:/usr/share/nginx/html/
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+    networks: 
+      - school_cms_gitlab_aischool-net
+  phpfpmapiteacher:
+    image: tbng84/aischool:php-fpm-7.3
+    ports:
+      - "9881:9000"
+    #depends_on: 
+      #- postgres
+    volumes: 
+      - .:/usr/share/nginx/html/
+      - ./docker/php-fpm/php.ini-development:/usr/local/etc/php/php.ini
+    secrets:
+      - gcp_service_account_key
+      #- gcp_project_id
+    environment: 
+      - APP_ENV=dev
+      - POSTGRES_DB_HOST=postgres
+      - POSTGRES_DB_APP=aischool_app
+      - POSTGRES_DB_AUTH=aischool_auth
+      - POSTGRES_DB_USER=aischool
+      - POSTGRES_DB_PASSWORD=aischool
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GCP_PROJECT_ID=aischool-prod
+      - GCP_SERVICE_ACCOUNT_KEY=/run/secrets/gcp_service_account_key
+      - GCP_BUCKET_PUBLIC=aischool_public
+      - GCP_BUCKET_PRIVATE=aischool_secured
+      - ONESIGNAL_APP_ID_TEACHER=ee718b14-8767-48e6-b122-57368d1dba54
+      - ONESIGNAL_API_KEY_TEACHER=ZmU3ZDI0N2UtNmNmZi00NTQxLTk0MDAtM2Q3ODk1N2Q2YzQ3
+      - ONESIGNAL_APP_ID_PARENT=4f5e83df-d783-43b3-aee5-6625b352d83c
+      - ONESIGNAL_API_KEY_PARENT=MTEzOGVkZWUtMzc1OS00YzY0LWFjYjItYjE1ODkzNGI0OWZk
+      - ONESIGNAL_APP_ID_PRINCIPAL=e1235584-d1ff-4087-8883-1e4886277374
+      - ONESIGNAL_API_KEY_PRINCIPAL=NWEzNjcxZmYtYWM2Mi00OGExLTljOWItOTE0ZDY0NjFjMTY3
+      - REDIS_LIST_PRINCIPAL=LIST_PRINCIPAL
+      - REDIS_LIST_TEACHER=LIST_TEACHER
+      - REDIS_LIST_PARENT=LIST_PARENT
+      - MEGAID_ENDPOINT=https://47b385fb.ngrok.io
+      - MEGAID_VERSION=/v1
+      - MEGAID_ACCESS_KEY=N7ZyVsUDc5TTK5iVTDjHW2ocBdJyvR2puFRu9F3esEHupAGt
+      - MEGAID_SECRET_KEY=4dEQi2L7qCxgAJobDHWiFTGRd9TiB8JB6JyNyu8ofdxEiJjg
+      - MEGAID_SERVICE=megakids
+      - MEGAID_SERVICE_APP=appteacher
+      - MEGAPAY_ENDPOINT=https://7edfa214.ngrok.io
+      - MEGAPAY_VERSION=/v1
+      - MEGAPAY_ACCESS_KEY=N7ZyVsUDc5TTK5iVTDjHW2ocBdJyvR2puFRu9F3esEHupAGt
+      - MEGAPAY_SECRET_KEY=4dEQi2L7qCxgAJobDHWiFTGRd9TiB8JB6JyNyu8ofdxEiJjg
+      - MEGAPAY_SERVICE=megakids
+      - MEGAPAY_SERVICE_APP=appteacher
+    networks: 
+      - school_cms_gitlab_aischool-net
+secrets:
+    #gcp_project_id:
+      #file: ./secrets/gcp_project_id.txt
+    gcp_service_account_key:
+      file: ./secrets/aischool-gcs.json
+networks: 
+    school_cms_gitlab_aischool-net:
+      external: true

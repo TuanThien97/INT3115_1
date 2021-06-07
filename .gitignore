@@ -1,0 +1,52 @@
+# yii console command
+#/yii
+
+# phpstorm project files
+.idea
+
+.phpintel
+# netbeans project files
+nbproject
+
+# zend studio for eclipse project files
+.buildpath
+.project
+.settings
+
+# windows thumbnail cache
+Thumbs.db
+
+# composer vendor dir
+# composer itself is not needed
+composer.phar
+composer.lock
+# Mac DS_Store Files
+.DS_Store
+
+# phpunit itself is not needed
+phpunit.phar
+# local phpunit config
+/phpunit.xml
+
+# vagrant runtime
+/.vagrant
+/api/www/assets
+
+# config files
+common/config/main-local.php
+
+# logs, runtime, assets
+logs
+runtime
+web/upload
+web/assets
+# vendor files
+vendor
+vendor_*
+
+#.htaccess
+
+*.bak
+
+docker-compose.yml
+run
